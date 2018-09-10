@@ -15,161 +15,154 @@ import java.io.InputStream;
 import java.text.ParseException;
 import java.util.*;
 
-/** Parses the map data. It parses the XML naively, i.e. it does not care where in the XML the map
- *  data is. */
-public class MapDataParser extends XmlParser implements ApiResponseReader<Void>
-{
-	private static final String NODE = "node",
-	                            WAY = "way",
-	                            RELATION = "relation";
+/**
+ * Parses the map data. It parses the XML naively, i.e. it does not care where
+ * in the XML the map data is.
+ */
+public class MapDataParser extends XmlParser implements ApiResponseReader<Void> {
 
-	private final OsmXmlDateFormat dateFormat = new OsmXmlDateFormat();
-	
-	private MapDataHandler handler;
-	private MapDataFactory factory;
+    private static final String NODE = "node",
+            WAY = "way",
+            RELATION = "relation";
 
-	/* temporary maps so we do not parse and hold many times the same user and changeset */
-	private Map<Long, User> users;
-	private Map<Long, Changeset> changesets;
+    private final OsmXmlDateFormat dateFormat = new OsmXmlDateFormat();
 
-	private long id = -1;
-	private int version = 0;
-	private Long changesetId;
-	private Date timestamp;
+    private MapDataHandler handler;
+    private MapDataFactory factory;
 
-	private Double lat;
-	private Double lon;
-	private Map<String, String> tags;
-	private List<RelationMember> members = new ArrayList<>();
-	private List<Long> nodes = new LinkedList<>();
+    /* temporary maps so we do not parse and hold many times the same user and changeset */
+    private Map<Long, User> users;
+    private Map<Long, Changeset> changesets;
 
-	public MapDataParser( MapDataHandler handler, MapDataFactory factory )
-	{
-		this.handler = handler;
-		this.factory = factory;
-	}
-	
-	@Override
-	public Void parse(InputStream in) throws IOException
-	{
-		users = new HashMap<>();
-		changesets = new HashMap<>();
+    private long id = -1;
+    private int version = 0;
+    private Long changesetId;
+    private Date timestamp;
 
-		doParse(in);
-		users = null;
-		changesets = null;
+    private Double lat;
+    private Double lon;
+    private Map<String, String> tags;
+    private List<RelationMember> members = new ArrayList<>();
+    private List<Long> nodes = new LinkedList<>();
 
-		return null;
-	}
+    public MapDataParser(MapDataHandler handler, MapDataFactory factory) {
+        this.handler = handler;
+        this.factory = factory;
+    }
 
-	@Override
-	protected void onStartElement() throws ParseException
-	{
-		String name = getName();
+    @Override
+    public Void parse(InputStream in) throws IOException {
+        users = new HashMap<>();
+        changesets = new HashMap<>();
 
-		if(name.equals("tag"))
-		{
-			if(tags == null)
-			{
-				tags = new HashMap<>();
-			}
-			tags.put(getAttribute("k"), getAttribute("v"));
-		}
-		else if(name.equals("nd"))
-		{
-			nodes.add( getLongAttribute("ref") );
-		}
-		else if(name.equals("member"))
-		{
-			members.add( factory.createRelationMember(
-					getLongAttribute("ref"),
-					getAttribute("role"),
-					Element.Type.valueOf(getAttribute("type").toUpperCase(Locale.UK))
-			));
-		}
-		else if (name.equals("bounds"))
-		{
-			BoundingBox bounds = new BoundingBox(
-					getDoubleAttribute("minlat"), getDoubleAttribute("minlon"),
-					getDoubleAttribute("maxlat"), getDoubleAttribute("maxlon"));
-			handler.handle(bounds);
-		}
-		else if (name.equals(NODE) || name.equals(WAY) || name.equals(RELATION))
-		{
-			timestamp = parseDate();
-			
-			changesetId = getLongAttribute("changeset");
-			if(changesetId != null && !changesets.containsKey(changesetId))
-			{
-				Changeset changeset = new Changeset();
-				changeset.id = changesetId;
-				changeset.date = timestamp;
-				changeset.user = parseUser();
-				
-				changesets.put( changesetId, changeset);
-			}
+        doParse(in);
+        users = null;
+        changesets = null;
 
-			id = getLongAttribute("id");
-			version = getIntAttribute("version");
+        return null;
+    }
 
-			if(name.equals(NODE))
-			{
-				lat = getDoubleAttribute("lat");
-				lon = getDoubleAttribute("lon");
-			}
-		}
-	}
+    @Override
+    protected void onStartElement() throws ParseException {
+        String name = getName();
 
-	private Date parseDate() throws ParseException
-	{
-		String timestamp = getAttribute("timestamp");
-		if(timestamp == null) return null;
+        if (name.equals("tag")) {
+            if (tags == null) {
+                tags = new HashMap<>();
+            }
+            tags.put(getAttribute("k"), getAttribute("v"));
+        } else if (name.equals("nd")) {
+            nodes.add(getLongAttribute("ref"));
+        } else if (name.equals("member")) {
+            members.add(factory.createRelationMember(
+                    getLongAttribute("ref"),
+                    getAttribute("role"),
+                    Element.Type.valueOf(getAttribute("type").toUpperCase(Locale.UK))
+            ));
+        } else if (name.equals("bounds")) {
+            BoundingBox bounds = new BoundingBox(
+                    getDoubleAttribute("minlat"), getDoubleAttribute("minlon"),
+                    getDoubleAttribute("maxlat"), getDoubleAttribute("maxlon"));
+            handler.handle(bounds);
+        } else if (name.equals(NODE) || name.equals(WAY) || name.equals(RELATION)) {
+            timestamp = parseDate();
 
-		return dateFormat.parse(timestamp);
-	}
+            changesetId = getLongAttribute("changeset");
+            if (changesetId != null && !changesets.containsKey(changesetId)) {
+                Changeset changeset = new Changeset();
+                changeset.id = changesetId;
+                changeset.date = timestamp;
+                changeset.user = parseUser();
 
-	private User parseUser()
-	{
-		Long userId = getLongAttribute("uid");
-		if(userId == null) return null;
+                changesets.put(changesetId, changeset);
+            }
 
-		if(!users.containsKey(userId))
-		{
-			User user = new User(userId, getAttribute("user"));
-			users.put(userId, user);
-			return user;
-		}
-		return users.get(userId);
-	}
+            id = getLongAttribute("id");
+            version = getIntAttribute("version");
 
-	@Override
-	protected void onEndElement()
-	{
-		String name = getName();
+            if (name.equals(NODE)) {
+                lat = getDoubleAttribute("lat");
+                lon = getDoubleAttribute("lon");
+            }
+        }
+    }
 
-		if(name.equals(NODE))
-		{
-			handler.handle(
-					factory.createNode(id, version, lat, lon, tags, changesets.get(changesetId), timestamp));
-		}
-		else if(name.equals(WAY))
-		{
-			handler.handle(
-					factory.createWay(id, version, nodes, tags,changesets.get(changesetId), timestamp));
-			
-			nodes = new LinkedList<>();
-		}
-		else if(name.equals(RELATION))
-		{
-			handler.handle(
-					factory.createRelation(id, version, members, tags, changesets.get(changesetId), timestamp));
-			
-			members = new ArrayList<>();
-		}
+    /**
+     * To avoid stoppping the parsing process for a bad date, return
+     * current date if date is unparsable.
+     * @return
+     * @throws ParseException 
+     */
+    private Date parseDate() throws ParseException {
+        String timestamp = getAttribute("timestamp");
+        if (timestamp == null) return null;
 
-		if (name.equals(NODE) || name.equals(WAY) || name.equals(RELATION))
-		{
-			tags = null;
-		}
-	}
+        try {
+            Date d = dateFormat.parse(timestamp);
+            return d;
+            
+        } catch (Exception ex) {
+            System.err.println("(W) MapDataParser.parseDate() "+timestamp+" "+ex.getMessage());
+                
+        }
+        return new Date();
+            
+        
+    }
+
+    private User parseUser() {
+        Long userId = getLongAttribute("uid");
+        if (userId == null) return null;
+
+        if (!users.containsKey(userId)) {
+            User user = new User(userId, getAttribute("user"));
+            users.put(userId, user);
+            return user;
+        }
+        return users.get(userId);
+    }
+
+    @Override
+    protected void onEndElement() {
+        String name = getName();
+
+        if (name.equals(NODE)) {
+            handler.handle(
+                    factory.createNode(id, version, lat, lon, tags, changesets.get(changesetId), timestamp));
+        } else if (name.equals(WAY)) {
+            handler.handle(
+                    factory.createWay(id, version, nodes, tags, changesets.get(changesetId), timestamp));
+
+            nodes = new LinkedList<>();
+        } else if (name.equals(RELATION)) {
+            handler.handle(
+                    factory.createRelation(id, version, members, tags, changesets.get(changesetId), timestamp));
+
+            members = new ArrayList<>();
+        }
+
+        if (name.equals(NODE) || name.equals(WAY) || name.equals(RELATION)) {
+            tags = null;
+        }
+    }
 }
